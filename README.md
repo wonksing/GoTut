@@ -4,7 +4,9 @@
 1. configtut - [viper](github.com/spf13/viper, "viper") 따라하기
 2. pointeraddress - 포인터 주소 출력하기
 3. syncpool - sync.Pool 사용하기
-
+4. http
+    - filedownload
+    - fileupload - [tutorialedge.net](https://tutorialedge.net/golang/go-file-upload-tutorial/, "tutorial") 참고
 ## TODO
 - clean architecture, hexagonal architecture
 - mvvm, 
