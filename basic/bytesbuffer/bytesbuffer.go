@@ -28,4 +28,12 @@ func main() {
 	readBuf2 := buf.Bytes()
 	fmt.Printf("read buffer %s\n", readBuf2)
 
+	n, err := buf.WriteString("hey")
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Printf("written %d bytes\n", n)
+
+	readBuf3 := buf.String()
+	fmt.Printf("read buffer %s\n", readBuf3)
 }
