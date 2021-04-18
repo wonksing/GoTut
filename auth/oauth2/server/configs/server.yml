@@ -1,0 +1,37 @@
+Hacker: true
+name: steve
+hobbies:
+- skateboarding
+- snowboarding
+- go
+clothing:
+  jacket: leather
+  trousers: denim
+age: 35
+eyes : brown
+beard: true
+
+token_config:
+  auth_code:
+    access_token_exp: 2
+    refresh_token_exp: 72
+    generate_refresh: true
+  client_credential:
+    access_token_exp: 2
+    refresh_token_exp: 72
+    generate_refresh: true
+
+token_store:
+  # file, memory
+  file:
+    path: './token_store'
+
+client_credentials:
+  client1:
+    id: '12345'
+    secret: '12345678'
+    domain: 'na'
+  client2:
+    id: 'abcde'
+    secret: 'abcd1234'
+    domain: 'localhost:8080'
