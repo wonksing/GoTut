@@ -25,7 +25,6 @@
 - kafka
 - elastic - Go 패키지가 있는지 모르겠다
 
-
 ## installed packages
 - github.com/google/uuid
 - go get golang.org/x/oauth2
