@@ -12,6 +12,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/dgrijalva/jwt-go"
 	"github.com/go-oauth2/oauth2/v4/generates"
 	"github.com/spf13/viper"
 
@@ -56,6 +57,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	jwtAccessToken := conf.GetBool("token_config.jwt_access_token")
+	jwtSecret := conf.GetString("token_config.jwt_secret")
 	authCodeAccessTokenExp := conf.GetInt("token_config.auth_code.access_token_exp")
 	authCodeRefreshTokenExp := conf.GetInt("token_config.auth_code.refresh_token_exp")
 	authCodeGenerateRefresh := conf.GetBool("token_config.auth_code.generate_refresh")
@@ -103,8 +106,11 @@ func main() {
 	}
 
 	// generate jwt access token
-	// manager.MapAccessGenerate(generates.NewJWTAccessGenerate("", []byte("00000000"), jwt.SigningMethodHS512))
-	manager.MapAccessGenerate(generates.NewAccessGenerate())
+	if jwtAccessToken {
+		manager.MapAccessGenerate(generates.NewJWTAccessGenerate("", []byte(jwtSecret), jwt.SigningMethodHS512))
+	} else {
+		manager.MapAccessGenerate(generates.NewAccessGenerate())
+	}
 
 	manager.MapClientStorage(clientStore)
 

@@ -1,17 +1,6 @@
-Hacker: true
-name: steve
-hobbies:
-- skateboarding
-- snowboarding
-- go
-clothing:
-  jacket: leather
-  trousers: denim
-age: 35
-eyes : brown
-beard: true
-
 token_config:
+  jwt_access_token: true
+  jwt_secret: 'asdf'
   auth_code:
     access_token_exp: 2
     refresh_token_exp: 72
@@ -19,7 +8,7 @@ token_config:
   client_credential:
     access_token_exp: 2
     refresh_token_exp: 72
-    generate_refresh: true
+    generate_refresh: false
 
 token_store:
   # file, memory
