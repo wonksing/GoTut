@@ -193,7 +193,7 @@ func main() {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-
+		verifyJWT(jwtSecret, token.GetAccess())
 		data := map[string]interface{}{
 			"expires_in": int64(token.GetAccessCreateAt().Add(token.GetAccessExpiresIn()).Sub(time.Now()).Seconds()),
 			"client_id":  token.GetClientID(),
@@ -338,4 +338,26 @@ func outputHTML(w http.ResponseWriter, req *http.Request, filename string) {
 	defer file.Close()
 	fi, _ := file.Stat()
 	http.ServeContent(w, req, file.Name(), fi.ModTime(), file)
+}
+
+func verifyJWT(secret string, tokenStr string) (string, error) {
+	// Parse and verify jwt access token
+	token, err := jwt.ParseWithClaims(tokenStr, &generates.JWTAccessClaims{}, func(t *jwt.Token) (interface{}, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("parse error")
+		}
+		return []byte(secret), nil
+	})
+	if err != nil {
+		// panic(err)
+	}
+
+	claims, ok := token.Claims.(*generates.JWTAccessClaims)
+	if !ok || !token.Valid {
+		// panic("invalid token")
+		return "", errors.New("invalid token")
+	}
+
+	fmt.Println("claims:", claims.Audience, claims.Id, claims.Subject)
+	return claims.Audience, nil
 }
