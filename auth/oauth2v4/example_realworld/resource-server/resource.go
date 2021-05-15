@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"flag"
 	"io"
 	"log"
@@ -42,7 +41,7 @@ func main() {
 
 	http.HandleFunc("/login", loginHandler)
 
-	http.HandleFunc("/protected", protectedHandler)
+	http.HandleFunc("/protected", AuthSessionIDHandler(protectedHandler))
 
 	http.HandleFunc("/logout", logoutHandler)
 
@@ -93,7 +92,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		outputHTML(w, r, "static/login.html")
 		return
 	}
-	store, err := session.Start(context.Background(), w, r)
+	store, err := session.Start(r.Context(), w, r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -130,11 +129,21 @@ func protectedHandler(w http.ResponseWriter, r *http.Request) {
 	if dumpvar {
 		_ = dumpRequest(os.Stdout, "protectedHandler", r) // Ignore the error
 	}
-	store, err := session.Start(context.Background(), w, r)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+
+	ctx := r.Context()
+	prevStore := ctx.Value(myCtx{})
+	var store session.Store
+	var err error
+	if prevStore != nil {
+		store = prevStore.(session.Store)
+	} else {
+		store, err = session.Start(r.Context(), w, r)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
+
 	if _, ok := store.Get("userID"); !ok {
 		w.Header().Set("Location", "/login")
 		w.WriteHeader(http.StatusFound)
@@ -149,7 +158,7 @@ func logoutHandler(w http.ResponseWriter, r *http.Request) {
 		_ = dumpRequest(os.Stdout, "logoutHandler", r) // Ignore the error
 	}
 
-	store, err := session.Start(context.Background(), w, r)
+	store, err := session.Start(r.Context(), w, r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -167,12 +176,21 @@ func redirectHandler(w http.ResponseWriter, r *http.Request) {
 	if dumpvar {
 		_ = dumpRequest(os.Stdout, "redirectHandler", r) // Ignore the error
 	}
-	store, err := session.Start(context.Background(), w, r)
+
+	store, err := session.Start(r.Context(), w, r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if _, ok := store.Get("userID"); !ok {
+	userID, ok := store.Get("userID")
+	if !ok {
+		w.Header().Set("Location", "/login")
+		w.WriteHeader(http.StatusFound)
+		return
+	}
+
+	token, err := genAccessTokenJWT(userID.(string), "asdfasdf1234")
+	if err != nil {
 		w.Header().Set("Location", "/login")
 		w.WriteHeader(http.StatusFound)
 		return
@@ -182,7 +200,7 @@ func redirectHandler(w http.ResponseWriter, r *http.Request) {
 	var buf bytes.Buffer
 	buf.WriteString(endpointURL)
 	v := url.Values{}
-	v.Set("redirect_uri", "http://localhost:9098/protected")
+	v.Set("redirect_uri", "http://localhost:9098/protected?token="+token)
 
 	if strings.Contains(endpointURL, "?") {
 		buf.WriteByte('&')
