@@ -1,30 +1,18 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
 
+	"github.com/wonksing/gotut/auth/oauth2v4/example_realworld/client-portal/handler"
 	"golang.org/x/oauth2"
 )
 
-const (
-	authServerURL = "http://localhost:9096"
-)
-
 var (
-	config = oauth2.Config{
-		ClientID:     "12345",
-		ClientSecret: "12345678",
-		Scopes:       []string{"all"},
-		RedirectURL:  "http://localhost:9094/oauth2",
-		Endpoint: oauth2.Endpoint{
-			AuthURL:  authServerURL + "/oauth/authorize",
-			TokenURL: authServerURL + "/oauth/token",
-		},
-	}
-	globalToken *oauth2.Token // Non-concurrent security
+	Version = "1.1.1"
 )
 
 func requestAuthorize() {
@@ -45,19 +33,51 @@ func requestAuthorize() {
 }
 
 func main() {
+	printVersion := false
+	var tickIntervalSec int = 30
+	addr := ""
+	authServerURL := ""
+	redirectURL := ""
+	flag.BoolVar(&printVersion, "version", false, "print version")
+	flag.IntVar(&tickIntervalSec, "tick", 30, "tick interval in second")
+	flag.StringVar(&addr, "addr", ":9094", ":9094")
+	flag.StringVar(&authServerURL, "authserver", "localhost:9096", "localhost:9096")
+	flag.StringVar(&redirectURL, "redirecturl", "http://localhost:9094/oauth2", "http://localhost:9094/oauth2")
+	flag.Parse()
 
-	http.HandleFunc("/", indexHandler)
+	if printVersion {
+		fmt.Printf("version \"%v\"\n", Version)
+		return
+	}
 
-	http.HandleFunc("/oauth2", oauthHandler)
+	config := oauth2.Config{
+		ClientID:     "12345",
+		ClientSecret: "12345678",
+		Scopes:       []string{"all"},
+		RedirectURL:  redirectURL,
+		Endpoint: oauth2.Endpoint{
+			AuthURL:  authServerURL + handler.API_OAUTH_AUTHORIZE,
+			TokenURL: authServerURL + handler.API_OAUTH_TOKEN,
+		},
+	}
 
-	http.HandleFunc("/refresh", refreshHandler)
+	h := &handler.ClientHandler{
+		OAuthConfig:   config,
+		AuthServerURL: authServerURL,
+	}
 
-	http.HandleFunc("/try", tryHandler)
+	http.HandleFunc(handler.API_INDEX, h.IndexHandler)
 
-	http.HandleFunc("/pwd", pwdHandler)
+	http.HandleFunc(handler.API_OAUTH, h.OauthHandler)
 
-	http.HandleFunc("/client", clientHandler)
+	http.HandleFunc(handler.API_REFRESH, h.RefreshHandler)
 
-	log.Println("Client is running at 9094 port.Please open http://localhost:9094")
-	log.Fatal(http.ListenAndServe(":9094", nil))
+	http.HandleFunc(handler.API_TRY, h.TryHandler)
+
+	http.HandleFunc(handler.API_PWD, h.PwdHandler)
+
+	http.HandleFunc(handler.API_CLIENT, h.ClientHandler)
+
+	log.Println("Client is running on " + addr)
+	log.Fatal(http.ListenAndServe(addr, nil))
 }

@@ -140,25 +140,29 @@ func main() {
 		ClientStore: clientStore,
 	}
 
-	http.HandleFunc("/", handler.AuthJWTHandler(h.HelloHandler, jwtSecret, "/login"))
-	http.HandleFunc("/hello", handler.AuthJWTHandler(h.HelloHandler, jwtSecret, "/login"))
-	http.HandleFunc("/login", h.LoginHandler)
+	// 테스트용 API
+	http.HandleFunc(handler.API_INDEX, handler.AuthJWTHandler(h.HelloHandler, jwtSecret, handler.API_LOGIN))
+	http.HandleFunc(handler.API_HELLO, handler.AuthJWTHandler(h.HelloHandler, jwtSecret, handler.API_LOGIN))
+	http.HandleFunc(handler.API_LOGIN, h.LoginHandler)
 
-	http.HandleFunc("/oauth/login", h.OAuthLoginHandler)
-	http.HandleFunc("/auth", handler.AuthJWTHandler(h.AuthHandler, jwtSecret, "/oauth/login"))
-
-	http.HandleFunc("/oauth/authorize", handler.AuthJWTHandler(h.OAuthAuthHandler, jwtSecret, "/oauth/login"))
+	// OAuth2 API
+	// 리소스 서버에 인증
+	http.HandleFunc(handler.API_OAUTH_LOGIN, h.OAuthLoginHandler)
+	// 리소스 서버의 정보 인가
+	http.HandleFunc(handler.API_OAUTH_ALLOW, handler.AuthJWTHandler(h.OAuthAllowAuthorizationHandler, jwtSecret, handler.API_OAUTH_LOGIN))
+	// Authorization Code Grant Type
+	http.HandleFunc(handler.API_OAUTH_AUTHORIZE, handler.AuthJWTHandler(h.OAuthAuthorizeHandler, jwtSecret, handler.API_OAUTH_LOGIN))
 
 	// token request for all types of grant
 	// Client Credentials Grant comes here directly
-	// http.HandleFunc("/oauth/token", handler.AuthJWTHandler(h.OAuthTokenHandler, jwtSecret))
-	http.HandleFunc("/oauth/token", h.OAuthTokenHandler)
+	// Client Server용 API
+	http.HandleFunc(handler.API_OAUTH_TOKEN, h.OAuthTokenHandler)
 
 	// validate access token
-	http.HandleFunc("/test", h.OAuthTestHandler)
+	http.HandleFunc(handler.API_OAUTH_TOKEN_VALIDATE, h.OAuthValidateTokenHandler)
 
 	// client credential 저장
-	http.HandleFunc("/credentials", h.CredentialHandler)
+	http.HandleFunc(handler.API_OAUTH_CREDENTIALS, h.CredentialHandler)
 
 	log.Printf("Server is running at %v.\n", addr)
 	log.Printf("Point your OAuth client Auth endpoint to %s%s", "http://"+addr, "/oauth/authorize")

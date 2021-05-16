@@ -14,6 +14,24 @@ import (
 	"github.com/wonksing/gotut/auth/oauth2v4/example_realworld/oauth2-server/commonutil"
 )
 
+const (
+	API_INDEX = "/"
+	API_HELLO = "/hello"
+	API_LOGIN = "/login"
+
+	API_OAUTH_LOGIN          = "/oauth/login"
+	API_OAUTH_ALLOW          = "/oauth/allow"
+	API_OAUTH_AUTHORIZE      = "/oauth/authorize"
+	API_OAUTH_TOKEN          = "/oauth/token"
+	API_OAUTH_TOKEN_VALIDATE = "/oauth/token/_validate"
+	API_OAUTH_CREDENTIALS    = "/credentials"
+
+	HTML_HELLO       = "static/hello.html"
+	HTML_LOGIN       = "static/login.html"
+	HTML_OAUTH_LOGIN = "static/oauthlogin.html"
+	HTML_OAUTH_ALLOW = "static/auth.html"
+)
+
 type ServerHandler struct {
 	Srv         *server.Server
 	JwtSecret   string
@@ -21,20 +39,20 @@ type ServerHandler struct {
 }
 
 func (h *ServerHandler) HelloHandler(w http.ResponseWriter, r *http.Request) {
-	commonutil.OutputHTML(w, r, "static/hello.html")
+	commonutil.OutputHTML(w, r, HTML_HELLO)
 }
 
 // LoginHandler 로그인 처리.
 // GET 메소드면 로그인 페이지로 보내고, POST면 아이디와 비번을 검증한다.
 func (h *ServerHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
-	commonutil.DumpRequest(os.Stdout, "login", r) // Ignore the error
+	commonutil.DumpRequest(os.Stdout, "LoginHandler", r) // Ignore the error
 
 	if r.Form == nil {
 		r.ParseForm()
 	}
 	if r.Method == "GET" {
 		commonutil.SetCookie(w, "access_token", "", time.Duration(24*365))
-		commonutil.OutputHTML(w, r, "static/login.html")
+		commonutil.OutputHTML(w, r, HTML_LOGIN)
 		return
 	}
 
@@ -59,7 +77,7 @@ func (h *ServerHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	commonutil.SetCookie(w, "access_token", accessToken, time.Duration(24*365))
 
-	w.Header().Set("Location", "/hello")
+	w.Header().Set("Location", API_HELLO)
 	w.WriteHeader(http.StatusFound)
 
 }
@@ -68,7 +86,7 @@ func (h *ServerHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 // 로그인된 사용자라면 사용자 아이디를 반환하고, 그렇지 않으면 로그인 페이지로 유도한다.
 // GET /oauth/authorize?client_id=12345&code_challenge=Qn3Kywp0OiU4NK_AFzGPlmrcYJDJ13Abj_jdL08Ahg8%3D&code_challenge_method=S256&redirect_uri=http%3A%2F%2Flocalhost%3A9094%2Foauth2&response_type=code&scope=all&state=xyz
 func UserAuthorizeHandler(w http.ResponseWriter, r *http.Request) (userID string, err error) {
-	commonutil.DumpRequest(os.Stdout, "userAuthorizeHandler", r) // Ignore the error
+	commonutil.DumpRequest(os.Stdout, "UserAuthorizeHandler", r) // Ignore the error
 
 	ctx := r.Context()
 	claim := ctx.Value(commonutil.TokenClaim{})
@@ -81,7 +99,7 @@ func UserAuthorizeHandler(w http.ResponseWriter, r *http.Request) (userID string
 // LoginHandler 로그인 처리.
 // GET 메소드면 로그인 페이지로 보내고, POST면 아이디와 비번을 검증한다.
 func (h *ServerHandler) OAuthLoginHandler(w http.ResponseWriter, r *http.Request) {
-	commonutil.DumpRequest(os.Stdout, "login", r) // Ignore the error
+	commonutil.DumpRequest(os.Stdout, "OAuthLoginHandler", r) // Ignore the error
 
 	if r.Form == nil {
 		r.ParseForm()
@@ -95,7 +113,7 @@ func (h *ServerHandler) OAuthLoginHandler(w http.ResponseWriter, r *http.Request
 		commonutil.SetCookie(w, "access_token", "", time.Duration(24*365))
 		commonutil.SetCookie(w, "oauth_return_uri", returnURICookie.Value, time.Duration(24*365))
 
-		commonutil.OutputHTML(w, r, "static/oauthlogin.html")
+		commonutil.OutputHTML(w, r, HTML_OAUTH_LOGIN)
 		return
 	}
 
@@ -135,13 +153,13 @@ func (h *ServerHandler) OAuthLoginHandler(w http.ResponseWriter, r *http.Request
 	commonutil.SetCookie(w, "access_token", accessToken, time.Duration(24*365))
 	commonutil.SetCookie(w, "oauth_return_uri", cliReturnUri, time.Duration(24*365))
 
-	w.Header().Set("Location", "/auth")
+	w.Header().Set("Location", API_OAUTH_ALLOW)
 	w.WriteHeader(http.StatusFound)
 
 }
 
-func (h *ServerHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {
-	_ = commonutil.DumpRequest(os.Stdout, "auth", r) // Ignore the error
+func (h *ServerHandler) OAuthAllowAuthorizationHandler(w http.ResponseWriter, r *http.Request) {
+	_ = commonutil.DumpRequest(os.Stdout, "OAuthAllowAuthorizationHandler", r) // Ignore the error
 	// store, err := session.Start(r.Context(), w, r)
 	// if err != nil {
 	// 	http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -154,14 +172,14 @@ func (h *ServerHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 	// 	return
 	// }
 
-	commonutil.OutputHTML(w, r, "static/auth.html")
+	commonutil.OutputHTML(w, r, HTML_OAUTH_ALLOW)
 }
 
 // OAuthAuthHandler 인가된 사용자인지 확인한다.
 // 로그인된 사용자라면 사용자 아이디를 반환하고, 그렇지 않으면 로그인 페이지로 유도한다.
 // GET /oauth/authorize?client_id=12345&code_challenge=Qn3Kywp0OiU4NK_AFzGPlmrcYJDJ13Abj_jdL08Ahg8%3D&code_challenge_method=S256&redirect_uri=http%3A%2F%2Flocalhost%3A9094%2Foauth2&response_type=code&scope=all&state=xyz
-func (h *ServerHandler) OAuthAuthHandler(w http.ResponseWriter, r *http.Request) {
-	commonutil.DumpRequest(os.Stdout, "authorize", r)
+func (h *ServerHandler) OAuthAuthorizeHandler(w http.ResponseWriter, r *http.Request) {
+	commonutil.DumpRequest(os.Stdout, "OAuthAuthorizeHandler", r)
 
 	if r.Form == nil {
 		r.ParseForm()
@@ -199,7 +217,7 @@ func (h *ServerHandler) OAuthAuthHandler(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *ServerHandler) OAuthTokenHandler(w http.ResponseWriter, r *http.Request) {
-	commonutil.DumpRequest(os.Stdout, "/oauth/token", r) // Ignore the error
+	commonutil.DumpRequest(os.Stdout, "OAuthTokenHandler", r) // Ignore the error
 
 	err := h.Srv.HandleTokenRequest(w, r)
 	if err != nil {
@@ -207,8 +225,8 @@ func (h *ServerHandler) OAuthTokenHandler(w http.ResponseWriter, r *http.Request
 	}
 }
 
-func (h *ServerHandler) OAuthTestHandler(w http.ResponseWriter, r *http.Request) {
-	commonutil.DumpRequest(os.Stdout, "test", r) // Ignore the error
+func (h *ServerHandler) OAuthValidateTokenHandler(w http.ResponseWriter, r *http.Request) {
+	commonutil.DumpRequest(os.Stdout, "OAuthValidateTokenHandler", r) // Ignore the error
 
 	token, err := h.Srv.ValidationBearerToken(r)
 	if err != nil {
@@ -216,8 +234,12 @@ func (h *ServerHandler) OAuthTestHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	commonutil.VerifyJWT(h.JwtSecret, token.GetAccess())
+
+	t := token.GetAccessCreateAt().Add(token.GetAccessExpiresIn())
+	expiresIn := int64(time.Until(t).Seconds())
 	data := map[string]interface{}{
-		"expires_in": int64(token.GetAccessCreateAt().Add(token.GetAccessExpiresIn()).Sub(time.Now()).Seconds()),
+		// "expires_in": int64(token.GetAccessCreateAt().Add(token.GetAccessExpiresIn()).Sub(time.Now()).Seconds()),
+		"expires_in": expiresIn,
 		"client_id":  token.GetClientID(),
 		"user_id":    token.GetUserID(),
 	}
