@@ -140,13 +140,14 @@ func main() {
 		ClientStore: clientStore,
 	}
 
-	http.HandleFunc("/hello", handler.AuthJWTHandler(h.HelloHandler, jwtSecret))
+	http.HandleFunc("/", handler.AuthJWTHandler(h.HelloHandler, jwtSecret, "/login"))
+	http.HandleFunc("/hello", handler.AuthJWTHandler(h.HelloHandler, jwtSecret, "/login"))
 	http.HandleFunc("/login", h.LoginHandler)
 
 	http.HandleFunc("/oauth/login", h.OAuthLoginHandler)
-	http.HandleFunc("/auth", handler.AuthJWTHandler(h.AuthHandler, jwtSecret))
+	http.HandleFunc("/auth", handler.AuthJWTHandler(h.AuthHandler, jwtSecret, "/oauth/login"))
 
-	http.HandleFunc("/oauth/authorize", handler.AuthJWTHandler(h.OAuthAuthHandler, jwtSecret))
+	http.HandleFunc("/oauth/authorize", handler.AuthJWTHandler(h.OAuthAuthHandler, jwtSecret, "/oauth/login"))
 
 	// token request for all types of grant
 	// Client Credentials Grant comes here directly
@@ -163,13 +164,4 @@ func main() {
 	log.Printf("Point your OAuth client Auth endpoint to %s%s", "http://"+addr, "/oauth/authorize")
 	log.Printf("Point your OAuth client Token endpoint to %s%s", "http://"+addr, "/oauth/token")
 	log.Fatal(http.ListenAndServe(fmt.Sprintf("%v", addr), nil))
-}
-
-func userAuthorizeHandler2(w http.ResponseWriter, r *http.Request) (userID string, err error) {
-	// 로그인
-
-	// 권한 허용
-
-	userID = "wonk"
-	return
 }

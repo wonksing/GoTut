@@ -9,18 +9,17 @@ import (
 	"github.com/wonksing/gotut/auth/oauth2v4/example_realworld/oauth2-server/commonutil"
 )
 
-func handleJWTAuth(w http.ResponseWriter, r *http.Request, secretKey string) (*commonutil.TokenClaim, error) {
+func handleJWTAuth(w http.ResponseWriter, r *http.Request, secretKey, redirectUriOnFail string) (*commonutil.TokenClaim, error) {
 
 	ck, err := r.Cookie("access_token")
 	if err != nil || ck.Value == "" {
-		if r.Form == nil {
-			r.ParseForm()
+
+		if redirectUriOnFail == "/oauth/login" {
+			if r.Form == nil {
+				r.ParseForm()
+			}
+			commonutil.SetCookie(w, "oauth_return_uri", r.Form.Encode(), time.Duration(24*365))
 		}
-
-		commonutil.SetCookie(w, "oauth_return_uri", r.Form.Encode(), time.Duration(24*365))
-
-		w.Header().Set("Location", "/oauth/login")
-		w.WriteHeader(http.StatusFound)
 		return nil, errors.New("no valid access_token")
 		// http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 		// return nil, errors.New(http.StatusText(http.StatusUnauthorized))
@@ -31,8 +30,6 @@ func handleJWTAuth(w http.ResponseWriter, r *http.Request, secretKey string) (*c
 
 	if err != nil || claim == nil {
 		commonutil.SetCookie(w, "access_token", "", time.Duration(24*365))
-		w.Header().Set("Location", "/oauth/login")
-		w.WriteHeader(http.StatusFound)
 		return nil, errors.New(http.StatusText(http.StatusUnauthorized))
 
 		// if expired {
@@ -50,11 +47,13 @@ func handleJWTAuth(w http.ResponseWriter, r *http.Request, secretKey string) (*c
 }
 
 // AuthJWTHandler to verify the request
-func AuthJWTHandler(next http.HandlerFunc, secret string) http.HandlerFunc {
+func AuthJWTHandler(next http.HandlerFunc, secret, redirectUriOnFail string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
-		claim, err := handleJWTAuth(w, r, secret)
+		claim, err := handleJWTAuth(w, r, secret, redirectUriOnFail)
 		if err != nil {
+			w.Header().Set("Location", redirectUriOnFail)
+			w.WriteHeader(http.StatusFound)
 			return
 		}
 		ctx := context.WithValue(r.Context(), commonutil.TokenClaim{}, claim)
