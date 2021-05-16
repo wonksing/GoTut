@@ -1,27 +1,22 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
-	"net/http/httputil"
-	"net/url"
-	"os"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
 	"github.com/go-oauth2/oauth2/v4/generates"
 	"github.com/spf13/viper"
+	"github.com/wonksing/gotut/auth/oauth2v4/example_realworld/oauth2-server/handler"
 
 	"github.com/go-oauth2/oauth2/v4/errors"
 	"github.com/go-oauth2/oauth2/v4/manage"
 	"github.com/go-oauth2/oauth2/v4/models"
 	"github.com/go-oauth2/oauth2/v4/server"
 	"github.com/go-oauth2/oauth2/v4/store"
-	"github.com/go-session/session"
 )
 
 var (
@@ -127,7 +122,7 @@ func main() {
 	})
 
 	// Authorization Code Grant
-	srv.SetUserAuthorizationHandler(userAuthorizeHandler)
+	srv.SetUserAuthorizationHandler(handler.UserAuthorizeHandler)
 	// srv.SetUserAuthorizationHandler(userAuthorizeHandler2)
 
 	srv.SetInternalErrorHandler(func(err error) (re *errors.Response) {
@@ -139,140 +134,32 @@ func main() {
 		log.Println("Response Error:", re.Error.Error())
 	})
 
-	http.HandleFunc("/login", loginHandler)
-	http.HandleFunc("/auth", authHandler)
+	h := handler.ServerHandler{
+		Srv:         srv,
+		JwtSecret:   jwtSecret,
+		ClientStore: clientStore,
+	}
 
-	http.HandleFunc("/oauth/authorize", func(w http.ResponseWriter, r *http.Request) {
-		if dumpvar {
-			dumpRequest(os.Stdout, "authorize", r)
-		}
+	http.HandleFunc("/login", h.LoginHandler)
+	http.HandleFunc("/auth", handler.AuthJWTHandler(h.AuthHandler, jwtSecret))
 
-		store, err := session.Start(r.Context(), w, r)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		var form url.Values
-		if v, ok := store.Get("ReturnUri"); ok {
-			form = v.(url.Values)
-		}
-		r.Form = form
-
-		fmt.Println("Form", r.Form)
-
-		store.Delete("ReturnUri")
-		store.Save()
-
-		err = srv.HandleAuthorizeRequest(w, r)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-		}
-	})
+	http.HandleFunc("/oauth/authorize", handler.AuthJWTHandler(h.OAuthAuthHandler, jwtSecret))
 
 	// token request for all types of grant
 	// Client Credentials Grant comes here directly
-	http.HandleFunc("/oauth/token", func(w http.ResponseWriter, r *http.Request) {
-		if dumpvar {
-			_ = dumpRequest(os.Stdout, "/oauth/token", r) // Ignore the error
-		}
-
-		err := srv.HandleTokenRequest(w, r)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-	})
+	// http.HandleFunc("/oauth/token", handler.AuthJWTHandler(h.OAuthTokenHandler, jwtSecret))
+	http.HandleFunc("/oauth/token", h.OAuthTokenHandler)
 
 	// validate access token
-	http.HandleFunc("/test", func(w http.ResponseWriter, r *http.Request) {
-		if dumpvar {
-			_ = dumpRequest(os.Stdout, "test", r) // Ignore the error
-		}
-		token, err := srv.ValidationBearerToken(r)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		verifyJWT(jwtSecret, token.GetAccess())
-		data := map[string]interface{}{
-			"expires_in": int64(token.GetAccessCreateAt().Add(token.GetAccessExpiresIn()).Sub(time.Now()).Seconds()),
-			"client_id":  token.GetClientID(),
-			"user_id":    token.GetUserID(),
-		}
-		e := json.NewEncoder(w)
-		e.SetIndent("", "  ")
-		e.Encode(data)
-	})
+	http.HandleFunc("/test", h.OAuthTestHandler)
 
 	// client credential 저장
-	http.HandleFunc("/credentials", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "PUT" {
-			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
-			return
-		}
-
-		clientID := r.FormValue("client_id")
-		clientSecret := r.FormValue("client_secret")
-		clientDomain := r.FormValue("client_domain")
-
-		err := clientStore.Set(clientID, &models.Client{
-			ID:     clientID,
-			Secret: clientSecret,
-			Domain: clientDomain,
-		})
-		if err != nil {
-			fmt.Println(err.Error())
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"CLIENT_ID": clientID, "CLIENT_SECRET": clientSecret})
-	})
+	http.HandleFunc("/credentials", h.CredentialHandler)
 
 	log.Printf("Server is running at %v.\n", addr)
 	log.Printf("Point your OAuth client Auth endpoint to %s%s", "http://"+addr, "/oauth/authorize")
 	log.Printf("Point your OAuth client Token endpoint to %s%s", "http://"+addr, "/oauth/token")
 	log.Fatal(http.ListenAndServe(fmt.Sprintf("%v", addr), nil))
-}
-
-func dumpRequest(writer io.Writer, header string, r *http.Request) error {
-	data, err := httputil.DumpRequest(r, true)
-	if err != nil {
-		return err
-	}
-	writer.Write([]byte("\n" + header + ": \n"))
-	writer.Write(data)
-	return nil
-}
-
-func userAuthorizeHandler(w http.ResponseWriter, r *http.Request) (userID string, err error) {
-	if dumpvar {
-		_ = dumpRequest(os.Stdout, "userAuthorizeHandler", r) // Ignore the error
-	}
-	store, err := session.Start(r.Context(), w, r)
-	if err != nil {
-		return
-	}
-
-	uid, ok := store.Get("LoggedInUserID")
-	if !ok {
-		if r.Form == nil {
-			r.ParseForm()
-		}
-
-		store.Set("ReturnUri", r.Form)
-		store.Save()
-
-		w.Header().Set("Location", "/login")
-		w.WriteHeader(http.StatusFound)
-		return
-	}
-
-	userID = uid.(string)
-	store.Delete("LoggedInUserID")
-	store.Save()
-	return
 }
 
 func userAuthorizeHandler2(w http.ResponseWriter, r *http.Request) (userID string, err error) {
@@ -282,82 +169,4 @@ func userAuthorizeHandler2(w http.ResponseWriter, r *http.Request) (userID strin
 
 	userID = "wonk"
 	return
-}
-func loginHandler(w http.ResponseWriter, r *http.Request) {
-	if dumpvar {
-		_ = dumpRequest(os.Stdout, "login", r) // Ignore the error
-	}
-	store, err := session.Start(r.Context(), w, r)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	if r.Method == "POST" {
-		if r.Form == nil {
-			if err := r.ParseForm(); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-		}
-		store.Set("LoggedInUserID", r.Form.Get("username"))
-		store.Save()
-
-		w.Header().Set("Location", "/auth")
-		w.WriteHeader(http.StatusFound)
-		return
-	}
-	outputHTML(w, r, "static/login.html")
-}
-
-func authHandler(w http.ResponseWriter, r *http.Request) {
-	if dumpvar {
-		_ = dumpRequest(os.Stdout, "auth", r) // Ignore the error
-	}
-	store, err := session.Start(nil, w, r)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	if _, ok := store.Get("LoggedInUserID"); !ok {
-		w.Header().Set("Location", "/login")
-		w.WriteHeader(http.StatusFound)
-		return
-	}
-
-	outputHTML(w, r, "static/auth.html")
-}
-
-func outputHTML(w http.ResponseWriter, req *http.Request, filename string) {
-	file, err := os.Open(filename)
-	if err != nil {
-		http.Error(w, err.Error(), 500)
-		return
-	}
-	defer file.Close()
-	fi, _ := file.Stat()
-	http.ServeContent(w, req, file.Name(), fi.ModTime(), file)
-}
-
-func verifyJWT(secret string, tokenStr string) (string, error) {
-	// Parse and verify jwt access token
-	token, err := jwt.ParseWithClaims(tokenStr, &generates.JWTAccessClaims{}, func(t *jwt.Token) (interface{}, error) {
-		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("parse error")
-		}
-		return []byte(secret), nil
-	})
-	if err != nil {
-		// panic(err)
-	}
-
-	claims, ok := token.Claims.(*generates.JWTAccessClaims)
-	if !ok || !token.Valid {
-		// panic("invalid token")
-		return "", errors.New("invalid token")
-	}
-
-	fmt.Println("claims:", claims.Audience, claims.Id, claims.Subject)
-	return claims.Audience, nil
 }

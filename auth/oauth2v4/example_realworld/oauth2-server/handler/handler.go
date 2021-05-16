@@ -1,0 +1,206 @@
+package handler
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/url"
+	"os"
+	"time"
+
+	"github.com/go-oauth2/oauth2/v4/models"
+	"github.com/go-oauth2/oauth2/v4/server"
+	"github.com/go-oauth2/oauth2/v4/store"
+	"github.com/wonksing/gotut/auth/oauth2v4/example_realworld/oauth2-server/commonutil"
+)
+
+type ServerHandler struct {
+	Srv         *server.Server
+	JwtSecret   string
+	ClientStore *store.ClientStore
+}
+
+// UserAuthorizeHandler 인가된 사용자인지 확인한다.
+// 로그인된 사용자라면 사용자 아이디를 반환하고, 그렇지 않으면 로그인 페이지로 유도한다.
+// GET /oauth/authorize?client_id=12345&code_challenge=Qn3Kywp0OiU4NK_AFzGPlmrcYJDJ13Abj_jdL08Ahg8%3D&code_challenge_method=S256&redirect_uri=http%3A%2F%2Flocalhost%3A9094%2Foauth2&response_type=code&scope=all&state=xyz
+func UserAuthorizeHandler(w http.ResponseWriter, r *http.Request) (userID string, err error) {
+	commonutil.DumpRequest(os.Stdout, "userAuthorizeHandler", r) // Ignore the error
+
+	ctx := r.Context()
+	claim := ctx.Value(commonutil.TokenClaim{})
+	tc := claim.(*commonutil.TokenClaim)
+	userID = tc.UsrID
+
+	return
+}
+
+// LoginHandler 로그인 처리.
+// GET 메소드면 로그인 페이지로 보내고, POST면 아이디와 비번을 검증한다.
+func (h *ServerHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
+
+	_ = commonutil.DumpRequest(os.Stdout, "login", r) // Ignore the error
+	if r.Form == nil {
+		r.ParseForm()
+	}
+	if r.Method == "GET" {
+		returnURICookie, err := r.Cookie("cli_return_uri")
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+		commonutil.SetCookie(w, "access_token", "", time.Duration(24*365))
+		commonutil.SetCookie(w, "cli_return_uri", returnURICookie.Value, time.Duration(24*365))
+
+		commonutil.OutputHTML(w, r, "static/login.html")
+		return
+	}
+
+	if r.Method != "POST" {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	userID := r.Form.Get("username")
+	userPW := r.Form.Get("password")
+	// 인증
+	if userID != userPW {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	c1, err := r.Cookie("cli_return_uri")
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	fmt.Println(c1.Value)
+
+	cliReturnUri := c1.Value
+	// 리다이렉트 확인
+	if cliReturnUri == "" {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	accessToken, err := commonutil.GenAccessTokenJWT(h.JwtSecret, userID, cliReturnUri)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	commonutil.SetCookie(w, "access_token", accessToken, time.Duration(24*365))
+	commonutil.SetCookie(w, "cli_return_uri", cliReturnUri, time.Duration(24*365))
+
+	w.Header().Set("Location", "/auth")
+	w.WriteHeader(http.StatusFound)
+
+}
+
+func (h *ServerHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {
+	_ = commonutil.DumpRequest(os.Stdout, "auth", r) // Ignore the error
+	// store, err := session.Start(r.Context(), w, r)
+	// if err != nil {
+	// 	http.Error(w, err.Error(), http.StatusInternalServerError)
+	// 	return
+	// }
+
+	// if _, ok := store.Get("LoggedInUserID"); !ok {
+	// 	w.Header().Set("Location", "/login")
+	// 	w.WriteHeader(http.StatusFound)
+	// 	return
+	// }
+
+	commonutil.OutputHTML(w, r, "static/auth.html")
+}
+
+// OAuthAuthHandler 인가된 사용자인지 확인한다.
+// 로그인된 사용자라면 사용자 아이디를 반환하고, 그렇지 않으면 로그인 페이지로 유도한다.
+// GET /oauth/authorize?client_id=12345&code_challenge=Qn3Kywp0OiU4NK_AFzGPlmrcYJDJ13Abj_jdL08Ahg8%3D&code_challenge_method=S256&redirect_uri=http%3A%2F%2Flocalhost%3A9094%2Foauth2&response_type=code&scope=all&state=xyz
+func (h *ServerHandler) OAuthAuthHandler(w http.ResponseWriter, r *http.Request) {
+	commonutil.DumpRequest(os.Stdout, "authorize", r)
+
+	returnURI := ""
+	c1, err := r.Cookie("cli_return_uri")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if c1 == nil || c1.Value == "" {
+		tmp := r.Context().Value(commonutil.TokenClaim{})
+		if tmp == nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+		tc := tmp.(*commonutil.TokenClaim)
+		returnURI = tc.CliReturnUri
+	} else {
+		returnURI = c1.Value
+	}
+
+	v, err := url.ParseQuery(returnURI)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	r.Form = v
+
+	commonutil.SetCookie(w, "cli_return_uri", "", time.Duration(24*365))
+
+	err = h.Srv.HandleAuthorizeRequest(w, r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	}
+
+}
+
+func (h *ServerHandler) OAuthTokenHandler(w http.ResponseWriter, r *http.Request) {
+	commonutil.DumpRequest(os.Stdout, "/oauth/token", r) // Ignore the error
+
+	err := h.Srv.HandleTokenRequest(w, r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func (h *ServerHandler) OAuthTestHandler(w http.ResponseWriter, r *http.Request) {
+	commonutil.DumpRequest(os.Stdout, "test", r) // Ignore the error
+
+	token, err := h.Srv.ValidationBearerToken(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	commonutil.VerifyJWT(h.JwtSecret, token.GetAccess())
+	data := map[string]interface{}{
+		"expires_in": int64(token.GetAccessCreateAt().Add(token.GetAccessExpiresIn()).Sub(time.Now()).Seconds()),
+		"client_id":  token.GetClientID(),
+		"user_id":    token.GetUserID(),
+	}
+	e := json.NewEncoder(w)
+	e.SetIndent("", "  ")
+	e.Encode(data)
+}
+
+func (h *ServerHandler) CredentialHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "PUT" {
+		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		return
+	}
+
+	clientID := r.FormValue("client_id")
+	clientSecret := r.FormValue("client_secret")
+	clientDomain := r.FormValue("client_domain")
+
+	err := h.ClientStore.Set(clientID, &models.Client{
+		ID:     clientID,
+		Secret: clientSecret,
+		Domain: clientDomain,
+	})
+	if err != nil {
+		fmt.Println(err.Error())
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"CLIENT_ID": clientID, "CLIENT_SECRET": clientSecret})
+}
