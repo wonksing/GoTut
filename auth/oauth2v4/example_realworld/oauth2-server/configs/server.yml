@@ -24,3 +24,7 @@ client_credentials:
     id: 'abcde'
     secret: 'abcd1234'
     domain: 'localhost:8080'
+  client3:
+    id: '222222'
+    secret: '22222222'
+    domain: 'localhost:8080'
