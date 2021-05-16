@@ -17,9 +17,9 @@ func handleJWTAuth(w http.ResponseWriter, r *http.Request, secretKey string) (*c
 			r.ParseForm()
 		}
 
-		commonutil.SetCookie(w, "cli_return_uri", r.Form.Encode(), time.Duration(24*365))
+		commonutil.SetCookie(w, "oauth_return_uri", r.Form.Encode(), time.Duration(24*365))
 
-		w.Header().Set("Location", "/login")
+		w.Header().Set("Location", "/oauth/login")
 		w.WriteHeader(http.StatusFound)
 		return nil, errors.New("no valid access_token")
 		// http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
@@ -31,7 +31,7 @@ func handleJWTAuth(w http.ResponseWriter, r *http.Request, secretKey string) (*c
 
 	if err != nil || claim == nil {
 		commonutil.SetCookie(w, "access_token", "", time.Duration(24*365))
-		w.Header().Set("Location", "/login")
+		w.Header().Set("Location", "/oauth/login")
 		w.WriteHeader(http.StatusFound)
 		return nil, errors.New(http.StatusText(http.StatusUnauthorized))
 
@@ -41,6 +41,9 @@ func handleJWTAuth(w http.ResponseWriter, r *http.Request, secretKey string) (*c
 		// http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 		// return errors.New(http.StatusText(http.StatusUnauthorized))
 	}
+
+	// oauth authorize 핸들러에서
+	// commonutil.SetCookie(w, "oauth_return_uri", r.Form.Encode(), time.Duration(24*365))
 
 	// w.Header().Set("usrID", claim.UsrID)
 	return claim, nil

@@ -9,25 +9,23 @@ import (
 	"github.com/dgrijalva/jwt-go"
 )
 
-func GenAccessTokenJWT(tokenSecret string, usrID, cliReturnUri string) (string, error) {
+type TokenClaim struct {
+	UsrID string  `json:"usr_id"`
+	Exp   float64 `json:"exp"`
+}
+
+func GenAccessTokenJWT(tokenSecret string, usrID string) (string, error) {
 
 	token := jwt.New(jwt.SigningMethodHS256)
 	claims := token.Claims.(jwt.MapClaims)
 	claims["usr_id"] = usrID
 	claims["exp"] = time.Now().Add(1 * time.Minute).Unix()
-	claims["cli_return_uri"] = cliReturnUri
 
 	tokenString, err := token.SignedString([]byte(tokenSecret))
 	if err != nil {
 		return "", err
 	}
 	return tokenString, nil
-}
-
-type TokenClaim struct {
-	UsrID        string  `json:"usr_id"`
-	Exp          float64 `json:"exp"`
-	CliReturnUri string  `json:"cli_return_uri"`
 }
 
 // ValidateAccessToken 액세스토큰의 유효성을 판단하고 리프레시 가능한지 확인
@@ -52,9 +50,8 @@ func ValidateAccessToken(accessToken string, tokenSecret string) (*TokenClaim, b
 	if token != nil && token.Claims.Valid() != nil {
 		c := token.Claims.(jwt.MapClaims)
 		claim = &TokenClaim{
-			UsrID:        c["usr_id"].(string),
-			Exp:          c["exp"].(float64),
-			CliReturnUri: c["cli_return_uri"].(string),
+			UsrID: c["usr_id"].(string),
+			Exp:   c["exp"].(float64),
 		}
 	}
 	if err != nil {
@@ -68,9 +65,8 @@ func ValidateAccessToken(accessToken string, tokenSecret string) (*TokenClaim, b
 	if token.Valid {
 		c := token.Claims.(jwt.MapClaims)
 		claim = &TokenClaim{
-			UsrID:        c["usr_id"].(string),
-			Exp:          c["exp"].(float64),
-			CliReturnUri: c["cli_return_uri"].(string),
+			UsrID: c["usr_id"].(string),
+			Exp:   c["exp"].(float64),
 		}
 		return claim, false, nil
 	}

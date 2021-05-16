@@ -20,6 +20,50 @@ type ServerHandler struct {
 	ClientStore *store.ClientStore
 }
 
+func (h *ServerHandler) HelloHandler(w http.ResponseWriter, r *http.Request) {
+	commonutil.OutputHTML(w, r, "static/hello.html")
+}
+
+// LoginHandler 로그인 처리.
+// GET 메소드면 로그인 페이지로 보내고, POST면 아이디와 비번을 검증한다.
+func (h *ServerHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
+	commonutil.DumpRequest(os.Stdout, "login", r) // Ignore the error
+
+	if r.Form == nil {
+		r.ParseForm()
+	}
+	if r.Method == "GET" {
+		commonutil.SetCookie(w, "access_token", "", time.Duration(24*365))
+		commonutil.OutputHTML(w, r, "static/login.html")
+		return
+	}
+
+	if r.Method != "POST" {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	// 인증
+	userID := r.Form.Get("username")
+	userPW := r.Form.Get("password")
+	if userID != userPW {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	accessToken, err := commonutil.GenAccessTokenJWT(h.JwtSecret, userID)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	commonutil.SetCookie(w, "access_token", accessToken, time.Duration(24*365))
+
+	w.Header().Set("Location", "/hello")
+	w.WriteHeader(http.StatusFound)
+
+}
+
 // UserAuthorizeHandler 인가된 사용자인지 확인한다.
 // 로그인된 사용자라면 사용자 아이디를 반환하고, 그렇지 않으면 로그인 페이지로 유도한다.
 // GET /oauth/authorize?client_id=12345&code_challenge=Qn3Kywp0OiU4NK_AFzGPlmrcYJDJ13Abj_jdL08Ahg8%3D&code_challenge_method=S256&redirect_uri=http%3A%2F%2Flocalhost%3A9094%2Foauth2&response_type=code&scope=all&state=xyz
@@ -36,22 +80,22 @@ func UserAuthorizeHandler(w http.ResponseWriter, r *http.Request) (userID string
 
 // LoginHandler 로그인 처리.
 // GET 메소드면 로그인 페이지로 보내고, POST면 아이디와 비번을 검증한다.
-func (h *ServerHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
+func (h *ServerHandler) OAuthLoginHandler(w http.ResponseWriter, r *http.Request) {
+	commonutil.DumpRequest(os.Stdout, "login", r) // Ignore the error
 
-	_ = commonutil.DumpRequest(os.Stdout, "login", r) // Ignore the error
 	if r.Form == nil {
 		r.ParseForm()
 	}
 	if r.Method == "GET" {
-		returnURICookie, err := r.Cookie("cli_return_uri")
+		returnURICookie, err := r.Cookie("oauth_return_uri")
 		if err != nil {
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
 		commonutil.SetCookie(w, "access_token", "", time.Duration(24*365))
-		commonutil.SetCookie(w, "cli_return_uri", returnURICookie.Value, time.Duration(24*365))
+		commonutil.SetCookie(w, "oauth_return_uri", returnURICookie.Value, time.Duration(24*365))
 
-		commonutil.OutputHTML(w, r, "static/login.html")
+		commonutil.OutputHTML(w, r, "static/oauthlogin.html")
 		return
 	}
 
@@ -60,14 +104,15 @@ func (h *ServerHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 인증
 	userID := r.Form.Get("username")
 	userPW := r.Form.Get("password")
-	// 인증
 	if userID != userPW {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
-	c1, err := r.Cookie("cli_return_uri")
+
+	c1, err := r.Cookie("oauth_return_uri")
 	if err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
@@ -81,14 +126,14 @@ func (h *ServerHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accessToken, err := commonutil.GenAccessTokenJWT(h.JwtSecret, userID, cliReturnUri)
+	accessToken, err := commonutil.GenAccessTokenJWT(h.JwtSecret, userID)
 	if err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
 	commonutil.SetCookie(w, "access_token", accessToken, time.Duration(24*365))
-	commonutil.SetCookie(w, "cli_return_uri", cliReturnUri, time.Duration(24*365))
+	commonutil.SetCookie(w, "oauth_return_uri", cliReturnUri, time.Duration(24*365))
 
 	w.Header().Set("Location", "/auth")
 	w.WriteHeader(http.StatusFound)
@@ -104,7 +149,7 @@ func (h *ServerHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 	// }
 
 	// if _, ok := store.Get("LoggedInUserID"); !ok {
-	// 	w.Header().Set("Location", "/login")
+	// 	w.Header().Set("Location", "/oauthlogin")
 	// 	w.WriteHeader(http.StatusFound)
 	// 	return
 	// }
@@ -118,34 +163,35 @@ func (h *ServerHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 func (h *ServerHandler) OAuthAuthHandler(w http.ResponseWriter, r *http.Request) {
 	commonutil.DumpRequest(os.Stdout, "authorize", r)
 
-	returnURI := ""
-	c1, err := r.Cookie("cli_return_uri")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+	if r.Form == nil {
+		r.ParseForm()
 	}
-	if c1 == nil || c1.Value == "" {
-		tmp := r.Context().Value(commonutil.TokenClaim{})
-		if tmp == nil {
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+
+	// return_uri가 있는지 확인
+	c1, _ := r.Cookie("oauth_return_uri")
+	// if err != nil {
+	// 	http.Error(w, err.Error(), http.StatusInternalServerError)
+	// 	return
+	// }
+	// if c1 == nil {
+	// 	http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+	// 	return
+	// }
+	if c1 != nil && c1.Value != "" {
+		returnURI := c1.Value
+		// oauth에 전달
+		v, err := url.ParseQuery(returnURI)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		tc := tmp.(*commonutil.TokenClaim)
-		returnURI = tc.CliReturnUri
-	} else {
-		returnURI = c1.Value
+		r.Form = v
 	}
 
-	v, err := url.ParseQuery(returnURI)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	r.Form = v
+	// 쿠키에서 제거
+	commonutil.SetCookie(w, "oauth_return_uri", "", time.Duration(24*365))
 
-	commonutil.SetCookie(w, "cli_return_uri", "", time.Duration(24*365))
-
-	err = h.Srv.HandleAuthorizeRequest(w, r)
+	err := h.Srv.HandleAuthorizeRequest(w, r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	}

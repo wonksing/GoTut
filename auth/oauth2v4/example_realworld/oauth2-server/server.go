@@ -140,7 +140,10 @@ func main() {
 		ClientStore: clientStore,
 	}
 
+	http.HandleFunc("/hello", handler.AuthJWTHandler(h.HelloHandler, jwtSecret))
 	http.HandleFunc("/login", h.LoginHandler)
+
+	http.HandleFunc("/oauth/login", h.OAuthLoginHandler)
 	http.HandleFunc("/auth", handler.AuthJWTHandler(h.AuthHandler, jwtSecret))
 
 	http.HandleFunc("/oauth/authorize", handler.AuthJWTHandler(h.OAuthAuthHandler, jwtSecret))
