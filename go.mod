@@ -3,6 +3,7 @@ module github.com/wonksing/gotut
 go 1.16
 
 require (
+	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/go-oauth2/oauth2/v4 v4.3.0
 	github.com/go-session/session v3.1.2+incompatible
 	github.com/golang/mock v1.4.4

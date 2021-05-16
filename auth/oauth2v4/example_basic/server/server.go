@@ -121,8 +121,8 @@ func main() {
 	})
 
 	// Authorization Code Grant
-	// srv.SetUserAuthorizationHandler(userAuthorizeHandler)
-	srv.SetUserAuthorizationHandler(userAuthorizeHandler2)
+	srv.SetUserAuthorizationHandler(userAuthorizeHandler)
+	// srv.SetUserAuthorizationHandler(userAuthorizeHandler2)
 
 	srv.SetInternalErrorHandler(func(err error) (re *errors.Response) {
 		log.Println("Internal Error:", err.Error())
@@ -165,6 +165,8 @@ func main() {
 	})
 
 	http.HandleFunc("/oauth/authorize2", func(w http.ResponseWriter, r *http.Request) {
+		// userAuthorizeHandler2 사용한 테스트
+		// srv.SetUserAuthorizationHandler(userAuthorizeHandler2)
 		/*
 			curl \
 			-X GET \
