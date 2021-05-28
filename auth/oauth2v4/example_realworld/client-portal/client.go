@@ -66,7 +66,7 @@ func main() {
 		AuthServerURL: authServerURL,
 	}
 
-	http.HandleFunc(handler.API_INDEX, h.IndexHandler)
+	http.HandleFunc(handler.API_REQUEST, h.AuthCodeRequest)
 
 	http.HandleFunc(handler.API_OAUTH, h.OauthHandler)
 

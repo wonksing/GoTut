@@ -20,6 +20,7 @@ const (
 	API_OAUTH_TOKEN_VALIDATE = "/oauth/token/_validate"
 
 	API_INDEX   = "/"
+	API_REQUEST = "/req"
 	API_OAUTH   = "/oauth2"
 	API_REFRESH = "/refresh"
 	API_TRY     = "/try"
@@ -29,6 +30,7 @@ const (
 
 var (
 	globalToken *oauth2.Token // Non-concurrent security
+	globalState string
 )
 
 type ClientHandler struct {
@@ -36,7 +38,7 @@ type ClientHandler struct {
 	AuthServerURL string
 }
 
-func (h *ClientHandler) IndexHandler(w http.ResponseWriter, r *http.Request) {
+func (h *ClientHandler) AuthCodeRequest(w http.ResponseWriter, r *http.Request) {
 	u := h.OAuthConfig.AuthCodeURL("xyz",
 		oauth2.SetAuthURLParam("code_challenge", commonutil.GenCodeChallengeS256("s256example")),
 		oauth2.SetAuthURLParam("code_challenge_method", "S256"))
