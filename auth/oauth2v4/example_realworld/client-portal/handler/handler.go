@@ -29,8 +29,9 @@ const (
 )
 
 var (
-	globalToken *oauth2.Token // Non-concurrent security
-	globalState string
+	globalToken    *oauth2.Token // Non-concurrent security
+	globalState    string
+	globalVerifier string
 )
 
 type ClientHandler struct {
@@ -39,17 +40,23 @@ type ClientHandler struct {
 }
 
 func (h *ClientHandler) AuthCodeRequest(w http.ResponseWriter, r *http.Request) {
-	u := h.OAuthConfig.AuthCodeURL("xyz",
-		oauth2.SetAuthURLParam("code_challenge", commonutil.GenCodeChallengeS256("s256example")),
+	globalState = commonutil.RandStringBytes(5)
+	globalVerifier = commonutil.RandStringBytes(16)
+	u := h.OAuthConfig.AuthCodeURL(globalState,
+		oauth2.SetAuthURLParam("code_challenge", commonutil.GenCodeChallengeS256(globalVerifier)),
 		oauth2.SetAuthURLParam("code_challenge_method", "S256"))
+
+	log.Println(globalState, globalVerifier)
 	log.Println(u)
+
 	http.Redirect(w, r, u, http.StatusFound)
 }
 
 func (h *ClientHandler) OauthHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	state := r.Form.Get("state")
-	if state != "xyz" {
+	log.Println("state", state, "globalState", globalState)
+	if state != globalState {
 		http.Error(w, "State invalid", http.StatusBadRequest)
 		return
 	}
@@ -58,7 +65,7 @@ func (h *ClientHandler) OauthHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Code not found", http.StatusBadRequest)
 		return
 	}
-	token, err := h.OAuthConfig.Exchange(context.Background(), code, oauth2.SetAuthURLParam("code_verifier", "s256example"))
+	token, err := h.OAuthConfig.Exchange(context.Background(), code, oauth2.SetAuthURLParam("code_verifier", globalVerifier))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
