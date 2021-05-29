@@ -41,7 +41,7 @@ func main() {
 	flag.BoolVar(&printVersion, "version", false, "print version")
 	flag.IntVar(&tickIntervalSec, "tick", 30, "tick interval in second")
 	flag.StringVar(&addr, "addr", ":9094", ":9094")
-	flag.StringVar(&authServerURL, "authserver", "localhost:9096", "localhost:9096")
+	flag.StringVar(&authServerURL, "authserver", "http://localhost:9096", "http://localhost:9096")
 	flag.StringVar(&redirectURL, "redirecturl", "http://localhost:9094/oauth2", "http://localhost:9094/oauth2")
 	flag.Parse()
 
@@ -66,7 +66,7 @@ func main() {
 		AuthServerURL: authServerURL,
 	}
 
-	http.HandleFunc(handler.API_INDEX, h.IndexHandler)
+	http.HandleFunc(handler.API_REQUEST, h.AuthCodeRequest)
 
 	http.HandleFunc(handler.API_OAUTH, h.OauthHandler)
 

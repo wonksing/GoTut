@@ -5,18 +5,12 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"time"
 
-	"github.com/dgrijalva/jwt-go"
-	"github.com/go-oauth2/oauth2/v4/generates"
 	"github.com/spf13/viper"
+	"github.com/wonksing/gotut/auth/oauth2v4/example_realworld/oauth2-server/commonutil"
 	"github.com/wonksing/gotut/auth/oauth2v4/example_realworld/oauth2-server/handler"
 
-	"github.com/go-oauth2/oauth2/v4/errors"
-	"github.com/go-oauth2/oauth2/v4/manage"
 	"github.com/go-oauth2/oauth2/v4/models"
-	"github.com/go-oauth2/oauth2/v4/server"
-	"github.com/go-oauth2/oauth2/v4/store"
 )
 
 var (
@@ -32,7 +26,7 @@ var (
 
 func init() {
 	flag.StringVar(&addr, "addr", ":9096", "listening address(eg. :9096)")
-	flag.StringVar(&configFileName, "cn", "./configs/server.yml", "config file name")
+	flag.StringVar(&configFileName, "conf", "./configs/server.yml", "config file name")
 	flag.BoolVar(&dumpvar, "d", true, "Dump requests and responses")
 	// flag.StringVar(&idvar, "i", "12345", "The client id being passed in")
 	// flag.StringVar(&secretvar, "s", "12345678", "The client secret being passed in")
@@ -63,58 +57,26 @@ func main() {
 
 	tokenStoreFilePath := conf.GetString("token_store.file.path")
 
-	clientStore := store.NewClientStore()
 	cc := conf.Sub("client_credentials")
 	ccSettings := cc.AllSettings()
-	for key, val := range ccSettings {
+
+	oauthServer := commonutil.NewOAuthServer(authCodeAccessTokenExp, authCodeRefreshTokenExp, authCodeGenerateRefresh,
+		clientCredentialsAccessTokenExp, clientCredentialsRefreshTokenExp, clientCredentialsGenerateRefresh,
+		tokenStoreFilePath, jwtAccessToken, jwtSecret)
+	for _, val := range ccSettings {
 		v := val.(map[string]interface{})
 		id := v["id"].(string)
 		secret := v["secret"].(string)
 		domain := v["domain"].(string)
-		fmt.Println(key)
-		clientStore.Set(id, &models.Client{
+		oauthServer.ClientStore.Set(id, &models.Client{
 			ID:     id,
 			Secret: secret,
 			Domain: domain,
 		})
 	}
 
-	manager := manage.NewDefaultManager()
-	// manager.SetAuthorizeCodeTokenCfg(manage.DefaultAuthorizeCodeTokenCfg)
-	manager.SetAuthorizeCodeTokenCfg(&manage.Config{
-		AccessTokenExp:    time.Hour * time.Duration(authCodeAccessTokenExp),
-		RefreshTokenExp:   time.Hour * time.Duration(authCodeRefreshTokenExp),
-		IsGenerateRefresh: authCodeGenerateRefresh,
-	})
-	manager.SetClientTokenCfg(&manage.Config{
-		AccessTokenExp:    time.Hour * time.Duration(clientCredentialsAccessTokenExp),
-		RefreshTokenExp:   time.Hour * time.Duration(clientCredentialsRefreshTokenExp),
-		IsGenerateRefresh: clientCredentialsGenerateRefresh,
-	})
-
-	// token store
-	if tokenStoreFilePath != "" {
-		manager.MustTokenStorage(store.NewFileTokenStore(tokenStoreFilePath))
-	} else {
-		// memory
-		manager.MustTokenStorage(store.NewMemoryTokenStore())
-	}
-
-	// generate jwt access token
-	if jwtAccessToken {
-		manager.MapAccessGenerate(generates.NewJWTAccessGenerate("", []byte(jwtSecret), jwt.SigningMethodHS512))
-	} else {
-		manager.MapAccessGenerate(generates.NewAccessGenerate())
-	}
-
-	manager.MapClientStorage(clientStore)
-
-	// srv := server.NewServer(server.NewConfig(), manager)
-	srv := server.NewDefaultServer(manager)
-	srv.Config.AllowGetAccessRequest = true
-
 	// Password credentials
-	srv.SetPasswordAuthorizationHandler(func(username, password string) (userID string, err error) {
+	oauthServer.Srv.SetPasswordAuthorizationHandler(func(username, password string) (userID string, err error) {
 		if username == "test" && password == "test" {
 			userID = "test"
 		}
@@ -122,22 +84,12 @@ func main() {
 	})
 
 	// Authorization Code Grant
-	srv.SetUserAuthorizationHandler(handler.UserAuthorizeHandler)
-	// srv.SetUserAuthorizationHandler(userAuthorizeHandler2)
-
-	srv.SetInternalErrorHandler(func(err error) (re *errors.Response) {
-		log.Println("Internal Error:", err.Error())
-		return
-	})
-
-	srv.SetResponseErrorHandler(func(re *errors.Response) {
-		log.Println("Response Error:", re.Error.Error())
-	})
+	oauthServer.Srv.SetUserAuthorizationHandler(handler.UserAuthorizeHandler)
 
 	h := handler.ServerHandler{
-		Srv:         srv,
+		Srv:         oauthServer.Srv,
 		JwtSecret:   jwtSecret,
-		ClientStore: clientStore,
+		ClientStore: oauthServer.ClientStore,
 	}
 
 	// 테스트용 API
