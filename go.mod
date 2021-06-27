@@ -16,6 +16,7 @@ require (
 	github.com/tidwall/buntdb v1.2.3 // indirect
 	golang.org/x/net v0.0.0-20210415231046-e915ea6b2b7d // indirect
 	golang.org/x/oauth2 v0.0.0-20210413134643-5e61552d6c78
+	golang.org/x/text v0.3.6
 	google.golang.org/appengine v1.6.7 // indirect
 	gopkg.in/oauth2.v3 v3.12.0
 )
