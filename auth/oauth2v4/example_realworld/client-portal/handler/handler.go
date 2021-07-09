@@ -15,9 +15,10 @@ import (
 )
 
 const (
-	API_OAUTH_AUTHORIZE      = "/oauth/authorize"
-	API_OAUTH_TOKEN          = "/oauth/token"
-	API_OAUTH_TOKEN_VALIDATE = "/oauth/token/_validate"
+	API_OAUTH_AUTHORIZE        = "/oauth/authorize"
+	API_OAUTH_AUTHORIZE_REMOTE = "/oauth/authorize/remote"
+	API_OAUTH_TOKEN            = "/oauth/token"
+	API_OAUTH_TOKEN_VALIDATE   = "/oauth/token/_validate"
 
 	API_INDEX   = "/"
 	API_REQUEST = "/req"
